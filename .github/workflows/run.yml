@@ -1,0 +1,63 @@
+name: tempo-runner
+
+on:
+  workflow_dispatch: {}          # bấm chạy tay
+  schedule:
+    # Chạy ~mỗi 30 phút trong khung 00:00–15:30 UTC = 07:00–22:30 giờ VN.
+    # Lưu ý: cron của GitHub hay trễ 5–15 phút, đó chính là "giờ ngẫu nhiên".
+    - cron: "*/30 0-15 * * *"
+
+# Không cho 2 lần chạy chồng nhau (tránh push state đè nhau)
+concurrency:
+  group: tempo-runner
+  cancel-in-progress: false
+
+permissions:
+  contents: write                # để commit state ngược về repo
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Cài sqlite3 (BẮT BUỘC cho payment-channel của Tempo)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sqlite3
+
+      - name: Cài Tempo CLI
+        run: |
+          curl -fsSL https://tempo.xyz/install | bash
+          echo "$HOME/.tempo/bin" >> "$GITHUB_PATH"
+
+      - name: Khôi phục ví Tempo (credential login) từ secret
+        env:
+          TEMPO_WALLET_B64: ${{ secrets.TEMPO_WALLET_B64 }}
+        run: |
+          if [ -z "$TEMPO_WALLET_B64" ]; then echo "Thiếu secret TEMPO_WALLET_B64"; exit 1; fi
+          mkdir -p "$HOME/.tempo"
+          echo "$TEMPO_WALLET_B64" | base64 -d > /tmp/w.tar.gz
+          tar -xzf /tmp/w.tar.gz -C "$HOME/.tempo"
+          rm -f /tmp/w.tar.gz
+
+      - name: Chạy 1 lượt
+        env:
+          MODE: live
+          DAILY_CAP: ${{ vars.DAILY_CAP || '0.16' }}
+        run: node engine.mjs
+
+      - name: Commit state ngược về repo
+        run: |
+          git config user.name  "tempo-runner-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add state/
+          if git diff --cached --quiet; then
+            echo "Không có thay đổi state."
+          else
+            git commit -m "[skip ci] update state $(date -u +%FT%TZ)"
+            git pull --rebase --autostash || true
+            git push
+          fi
