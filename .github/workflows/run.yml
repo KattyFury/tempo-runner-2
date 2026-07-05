@@ -32,6 +32,8 @@ jobs:
         run: |
           curl -fsSL https://tempo.xyz/install | bash
           echo "$HOME/.tempo/bin" >> "$GITHUB_PATH"
+          # Hâm nóng để launcher tải sẵn extension tempo-request
+          "$HOME/.tempo/bin/tempo" request --help >/dev/null 2>&1 || true
 
       - name: Khôi phục ví Tempo (credential login) từ secret
         env:
@@ -46,6 +48,7 @@ jobs:
       - name: Chạy 1 lượt
         env:
           MODE: live
+          TEMPO_BIN: tempo request
           DAILY_CAP: ${{ vars.DAILY_CAP || '0.16' }}
         run: node engine.mjs
 

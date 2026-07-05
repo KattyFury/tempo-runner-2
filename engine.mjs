@@ -89,8 +89,10 @@ function tempoRequest({ url, method = "POST", body, headers = {}, maxSpend }) {
   args.push(url);
 
   let stdout = "", ok = true, err = "";
+  // TEMPO_BIN có thể là "tempo-request" hoặc dạng launcher "tempo request"
+  const [bin, ...preArgs] = TEMPO_BIN.trim().split(/\s+/);
   try {
-    stdout = execFileSync(TEMPO_BIN, args, { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
+    stdout = execFileSync(bin, [...preArgs, ...args], { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
   } catch (e) {
     ok = false;
     err = (e.stderr || e.message || "").toString();
